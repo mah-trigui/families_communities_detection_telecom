@@ -14,7 +14,7 @@
         Telecom household inference using ranked contact behavior, shared cell-tower usage, and graph partitioning
       </p>
       <div class="hero-buttons">
-        <a href="https://github.com/mah-trigui/telecom-household-inference" class="btn primary">View Repository</a>
+        <a href="https://github.com/mah-trigui/families_communities_detection_telecom" class="btn primary">View Repository</a>
         <a href="#idea" class="btn secondary">Explore Method</a>
       </div>
     </div>
@@ -96,7 +96,8 @@
                                        ▼
                 ┌─────────────────────────────────────────────┐
                 │ Final Household-Level Output                │
-                │ msisdn, community, big_family, foyer, role  │
+                │ subscriber, community, big_family, foyer    │
+                │ and within-household role assignment        │
                 └─────────────────────────────────────────────┘
           </pre>
         </details>
@@ -164,63 +165,70 @@
       <div class="container">
         <h2>Selected Code Snippets</h2>
 
-        <h3>1. Keep communities with enough telecom members</h3>
+        <h3>1. Keep only communities with enough telecom subscribers</h3>
         <pre>
-select a.*, b.nb_comm_tt
-from family_candidates a
+select community_candidates.*,
+       community_sizes.telecom_member_count
+from community_candidates
 left join (
-    select community, count(msisdn) as nb_comm_tt
-    from family_candidates
-    group by community
-) b
-on a.community = b.community
-where b.nb_comm_tt >= 2;
+    select community_id,
+           count(subscriber_id) as telecom_member_count
+    from community_candidates
+    group by community_id
+) community_sizes
+on community_candidates.community_id = community_sizes.community_id
+where community_sizes.telecom_member_count >= 2;
         </pre>
 
         <h3>2. Aggregate direct subscriber-to-subscriber communication</h3>
         <pre>
-select from_subscriber_id as a_number,
-       to_subscriber_id   as b_number,
-       sum(calls)         as calls,
-       sum(duration) / 60 as duration_minutes,
-       sum(calling_days)  as calling_days
-from cdr_monthly_traffic
-where a_number_tt_cust_flag = 1
-  and b_number_tt_cust_flag = 1
-group by from_subscriber_id, to_subscriber_id;
+select caller_subscriber_id    as source_subscriber_id,
+       callee_subscriber_id    as target_subscriber_id,
+       sum(call_count)         as total_calls,
+       sum(call_duration) / 60 as total_duration_minutes,
+       sum(active_days)        as total_active_days
+from subscriber_traffic
+where source_is_telecom_customer = 1
+  and target_is_telecom_customer = 1
+group by caller_subscriber_id, callee_subscriber_id;
         </pre>
 
-        <h3>3. Keep top-used cell towers per subscriber inside community</h3>
+        <h3>3. Keep top-used cell towers per subscriber</h3>
         <pre>
 select *
 from (
-    select d.*,
+    select subscriber_cells.*,
            row_number() over (
-               partition by community, msisdn
-               order by nbre desc
-           ) as rang
-    from community_cells d
+               partition by community_id, subscriber_id
+               order by tower_usage_count desc
+           ) as tower_rank
+    from subscriber_cells
 )
-where rang <= 5;
+where tower_rank <= 5;
         </pre>
 
         <h3>4. Keep ties that are both close contacts and shared-location neighbors</h3>
         <pre>
 case
-  when num_1 in (first_to, second_to, first_from, second_from)
-  then num_1
-end as num_close_1
+  when related_subscriber_id in (
+       top_outgoing_contact_1,
+       top_outgoing_contact_2,
+       top_incoming_contact_1,
+       top_incoming_contact_2
+  )
+  then related_subscriber_id
+end as close_contact_subscriber_id
         </pre>
 
         <h3>5. Build graph input for household partitioning in R</h3>
         <pre>
 select distinct
-       msisdn as a_num,
-       substr(foyer, 1, 8) as b_num,
-       big_family as groupe
-from family_household_edges
-where foyer is not null
-order by big_family;
+       subscriber_id             as source_subscriber_id,
+       substr(household_id, 1, 8) as target_subscriber_id,
+       big_family_id             as family_group_id
+from household_graph_edges
+where household_id is not null
+order by big_family_id;
         </pre>
       </div>
     </section>
