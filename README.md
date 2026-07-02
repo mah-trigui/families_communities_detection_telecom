@@ -4,7 +4,7 @@ A graph analytics project showing how telecom communication communities can be r
 
 ## Project Website
 
-[View Project Site](https://mah-trigui.github.io/telecom-household-inference/)
+[View Project Site](https://mah-trigui.github.io/families_communities_detection_telecom/)
 
 ## Overview
 
@@ -14,7 +14,7 @@ At first glance, a communication community looks like the answer: a group of peo
 
 But for the business problem, that output was still too coarse.
 
-The real goal was to identify likely **household-level ties** inside broader communication communities.
+The real goal was to identify likely household-level ties inside broader communication communities.
 
 A single telecom community can contain:
 - extended family
@@ -96,5 +96,6 @@ This turns the problem into a multi-stage behavioral inference pipeline:
                                        ▼
                 ┌─────────────────────────────────────────────┐
                 │ Final Household-Level Output                │
-                │ msisdn, community, big_family, foyer, role  │
+                │ subscriber, community, big_family, foyer    │
+                │ and within-household role assignment        │
                 └─────────────────────────────────────────────┘
