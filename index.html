@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telecom Household Inference</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>Detecting Households Is Not the Same as Detecting Communities</h1>
+      <p class="subtitle">
+        Telecom household inference using ranked contact behavior, shared cell-tower usage, and graph partitioning
+      </p>
+      <div class="hero-buttons">
+        <a href="https://github.com/mah-trigui/telecom-household-inference" class="btn primary">View Repository</a>
+        <a href="#idea" class="btn secondary">Explore Method</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <h2>Overview</h2>
+        <p>
+          This project started from precomputed telecom communication communities derived from call graph analysis.
+          At first glance, those communities looked like the answer: groups of people who call each other frequently.
+        </p>
+        <p>
+          But for the business problem, that output was still too coarse. A communication community can contain
+          extended family, multiple households, close friends, and other tightly connected subgroups.
+        </p>
+        <p>
+          The real goal was to identify likely household-level ties inside those broader communities. So instead of
+          treating the graph output as the final answer, the pipeline refined it into nested social structure:
+          <strong>Big Family</strong> and <strong>Foyer / Household</strong>.
+        </p>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2>Architecture</h2>
+        <img src="images/architecture.jpg" alt="Telecom household inference architecture" class="architecture-image" />
+
+        <details style="margin-top: 30px;">
+          <summary style="cursor: pointer; font-weight: bold; color: #0c5adb; font-size: 1.1rem;">
+            📋 View detailed text-based architecture diagram
+          </summary>
+          <pre style="margin-top: 15px;">
+                ┌─────────────────────────────────────────────┐
+                │ Telecom Communication Communities           │
+                │ precomputed CLA community assignments       │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Community Filtering                         │
+                │ keep communities with enough TT members     │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Ranked Contact Layer                        │
+                │ top incoming / outgoing contacts per user   │
+                │ ranked by calls, days, and duration         │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Shared Cell Behavior Layer                  │
+                │ top-used cell towers per subscriber         │
+                │ retain overlapping dominant towers          │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Candidate Family Tie Construction           │
+                │ communication closeness + shared location   │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Big Family Construction                     │
+                │ broader connected family-like groups        │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Foyer / Household Partitioning              │
+                │ graph-based grouping in R / igraph          │
+                └──────────────────────┬──────────────────────┘
+                                       │
+                                       ▼
+                ┌─────────────────────────────────────────────┐
+                │ Final Household-Level Output                │
+                │ msisdn, community, big_family, foyer, role  │
+                └─────────────────────────────────────────────┘
+          </pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="idea">
+      <div class="container">
+        <h2>The Core Idea</h2>
+        <p>
+          The first graph segmentation was not the final business unit.
+        </p>
+        <p>
+          A communication community can mix extended family, multiple households, friends, work relationships,
+          and other strong subgroups. So the project had to separate two different levels of structure:
+        </p>
+        <ul class="clean-list">
+          <li><strong>Big Family:</strong> the broader connected social unit</li>
+          <li><strong>Foyer / Household:</strong> the smaller likely co-living unit inside it</li>
+        </ul>
+        <p>
+          Graph membership alone was not enough. To infer a household-level tie, the relationship also had to
+          look like daily life: frequent direct communication and persistent shared place usage.
+        </p>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2>Behavioral Signal Design</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Ranked Communication Intensity</h3>
+            <p>
+              The pipeline did not rely only on total call volume. It built top-5 incoming and outgoing
+              contact lists for each subscriber, preserving ordinal importance.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Shared Cell-Tower Usage</h3>
+            <p>
+              The pipeline used dominant cell-tower patterns as a proxy for recurring location overlap,
+              turning infrastructure traces into household evidence.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Signal Intersection</h3>
+            <p>
+              A tie had to satisfy both communication closeness and shared location behavior to be considered
+              a strong household candidate.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Graph Partitioning</h3>
+            <p>
+              Once stronger ties were constructed, each broader family structure was partitioned into
+              smaller foyer groups using graph-based grouping in R.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Selected Code Snippets</h2>
+
+        <h3>1. Keep communities with enough telecom members</h3>
+        <pre>
+select a.*, b.nb_comm_tt
+from family_candidates a
+left join (
+    select community, count(msisdn) as nb_comm_tt
+    from family_candidates
+    group by community
+) b
+on a.community = b.community
+where b.nb_comm_tt >= 2;
+        </pre>
+
+        <h3>2. Aggregate direct subscriber-to-subscriber communication</h3>
+        <pre>
+select from_subscriber_id as a_number,
+       to_subscriber_id   as b_number,
+       sum(calls)         as calls,
+       sum(duration) / 60 as duration_minutes,
+       sum(calling_days)  as calling_days
+from cdr_monthly_traffic
+where a_number_tt_cust_flag = 1
+  and b_number_tt_cust_flag = 1
+group by from_subscriber_id, to_subscriber_id;
+        </pre>
+
+        <h3>3. Keep top-used cell towers per subscriber inside community</h3>
+        <pre>
+select *
+from (
+    select d.*,
+           row_number() over (
+               partition by community, msisdn
+               order by nbre desc
+           ) as rang
+    from community_cells d
+)
+where rang <= 5;
+        </pre>
+
+        <h3>4. Keep ties that are both close contacts and shared-location neighbors</h3>
+        <pre>
+case
+  when num_1 in (first_to, second_to, first_from, second_from)
+  then num_1
+end as num_close_1
+        </pre>
+
+        <h3>5. Build graph input for household partitioning in R</h3>
+        <pre>
+select distinct
+       msisdn as a_num,
+       substr(foyer, 1, 8) as b_num,
+       big_family as groupe
+from family_household_edges
+where foyer is not null
+order by big_family;
+        </pre>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2>Cell-Tower Dominance as Behavioral Proxy</h2>
+        <p>
+          One of the most useful signals in the project was not demographic at all.
+        </p>
+        <p>
+          Dominant cell-tower usage acted as a behavioral proxy for likely home-location overlap.
+          Instead of asking where people declared they lived, the pipeline inferred shared daily-life
+          proximity from repeated infrastructure traces.
+        </p>
+        <p>
+          This is a useful applied ML pattern: sometimes the strongest features are not direct measurements
+          of the concept you want. They are operational traces that behave like reliable proxies.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Why this matters</h2>
+        <ul class="clean-list">
+          <li>distinguishes graph communities from household structure</li>
+          <li>combines graph output with behavioral evidence</li>
+          <li>avoids treating all connected members as equally close</li>
+          <li>turns telecom infrastructure traces into social inference signals</li>
+          <li>shows that clustering often needs a second refinement layer</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2>Where this pattern generalizes</h2>
+        <p>
+          The same design principle appears in many applied analytics settings:
+        </p>
+        <ul class="clean-list">
+          <li>customer segments vs actual buying groups</li>
+          <li>graph communities vs decision units</li>
+          <li>care networks vs households</li>
+          <li>geographic clusters vs operating zones</li>
+          <li>operational traces vs behavioral proxies</li>
+        </ul>
+        <p>
+          The reusable pattern is simple: the first segmentation is often not the final unit you care about.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2>Key Takeaway</h2>
+        <div class="metric-box">
+          <p><strong>Detecting households is not the same as detecting communities.</strong></p>
+          <p>
+            In applied graph analytics, the first clustering step is often only the beginning.
+            The real analytical work starts when you refine a connected structure into the smaller
+            behavioral unit the business actually needs.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2>Public Repository Scope</h2>
+        <p>
+          This public version shares the project architecture, selected query logic, behavioral inference
+          design, and project presentation. Raw telecom data, private schemas, and production identifiers
+          are not included.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Built as a public project showcase in graph analytics, household inference, and behavioral signal engineering.</p>
+    </div>
+  </footer>
+</body>
+</html>
